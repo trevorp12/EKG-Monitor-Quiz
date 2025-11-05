@@ -6,51 +6,108 @@
     <title>ECG Rhythm Quiz</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', sans-serif; background: #1e1e1e; color: #e0e0e0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        #monitor { width: 100%; max-width: 800px; height: 200px; background: #2c2c2c; border: 2px solid #4a4a4a; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        #header { max-width: 800px; width: 100%; text-align: center; margin-bottom: 20px; }
+        #category-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 15px; }
+        .category-btn { background: #1f1f1f; color: #fff; border: 1px solid #444; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: 0.2s; }
+        .category-btn:hover, .category-btn.active { background: #00aaff; color: #000; }
+        #quiz-settings { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; margin-bottom: 15px; }
+        #quiz-settings select, #start-btn { padding: 8px 12px; border-radius: 6px; border: 1px solid #444; background: #1f1f1f; color: #e0e0e0; font-size: 14px; }
+        #start-btn { background: #00ff88; color: #000; font-weight: bold; cursor: pointer; }
+        #start-btn:hover { background: #00cc70; }
+        #monitor { width: 100%; max-width: 800px; height: 200px; background: #1a1a1a; border: 2px solid #333; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.6); }
         canvas { display: block; width: 100%; height: 100%; }
-        button { background: #00ff7f; color: #1a1a1a; padding: 10px 20px; margin: 10px; border: none; border-radius: 6px; cursor: pointer; }
+        #quiz-container { max-width: 600px; background: #1f1f1f; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.6); text-align: center; }
+        #question { font-size: 20px; font-weight: bold; margin-bottom: 15px; }
+        #options { list-style: none; margin: 0; padding: 0; }
+        #options li { margin: 10px 0; padding: 12px; background: #2a2a2a; border: 1px solid #444; border-radius: 6px; cursor: pointer; }
+        #options li:hover { background: #3a3a3a; }
+        #options li.selected { background: #00ff88; color: #000; font-weight: bold; }
+        #feedback { margin-top: 20px; padding: 10px; background: #2a2a2a; border-radius: 6px; min-height: 50px; }
+        #score { font-size: 28px; font-weight: bold; margin: 20px 0; display: none; }
+        button { background: #00ff88; color: #000; border: none; padding: 10px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold; margin: 10px 5px; }
+        button:hover { background: #00cc70; }
         .hidden { display: none; }
     </style>
 </head>
 <body>
 
+<div id="header">
+    <h1>ECG Rhythm Quiz</h1>
+    <div id="category-bar">
+        <button class="category-btn active" data-type="all">All Rhythms</button>
+        <button class="category-btn" data-type="nsr">NSR</button>
+        <button class="category-btn" data-type="tach">Tach</button>
+        <button class="category-btn" data-type="brad">Brad</button>
+        <button class="category-btn" data-type="vfib">V-Fib</button>
+        <button class="category-btn" data-type="vtach">V-Tach</button>
+        <button class="category-btn" data-type="block1">1° Block</button>
+        <button class="category-btn" data-type="pac">PAC</button>
+        <button class="category-btn" data-type="pvc">PVC</button>
+        <button class="category-btn" data-type="asystole">Asystole</button>
+    </div>
+    <div id="quiz-settings">
+        <select id="question-count">
+            <option value="10">10 Questions</option>
+            <option value="15" selected>15 Questions</option>
+            <option value="20">20 Questions</option>
+            <option value="25">25 Questions</option>
+        </select>
+        <button id="start-btn">Start Quiz</button>
+    </div>
+</div>
+
 <div id="monitor">
     <canvas id="ecg-canvas"></canvas>
 </div>
 
-<button id="start-btn">Start Quiz</button>
 <div id="quiz-container" class="hidden">
-    <h2>Question 1: What rhythm is this?</h2>
-    <button onclick="alert('Correct!')">NSR</button>
-    <button onclick="alert('Wrong')">VFib</button>
+    <div id="question"></div>
+    <ul id="options"></ul>
+    <button id="submit-btn">Submit Answer</button>
+    <button id="next-btn" class="hidden">Next Question</button>
+    <div id="feedback"></div>
+    <div id="score"></div>
 </div>
 
 <script>
     const canvas = document.getElementById('ecg-canvas');
     const ctx = canvas.getContext('2d');
-    let width = canvas.width = canvas.clientWidth;
-    let height = canvas.height = canvas.clientHeight;
+    let width, height;
     const speed = 2;
+    const lineColor = '#00ff88';
     let offset = 0;
-    let currentRhythm = x => height / 2 + Math.sin(x * 0.05) * 20;
+    let currentRhythm = null;
 
     function resize() {
-        width = canvas.width = canvas.clientWidth;
-        height = canvas.height = canvas.clientHeight;
+        width = canvas.clientWidth;
+        height = canvas.clientHeight;
+        canvas.width = width;
+        canvas.height = height;
+        drawGrid();
     }
     window.addEventListener('load', () => {
         resize();
         window.addEventListener('resize', resize);
     });
 
+    function drawGrid() {
+        ctx.clearRect(0, 0, width, height);
+        ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 0.5;
+        for (let x = 0; x < width; x += 10) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,height); ctx.stroke(); }
+        for (let y = 0; y < height; y += 10) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(width,y); ctx.stroke(); }
+        ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+        for (let x = 0; x < width; x += 50) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,height); ctx.stroke(); }
+        for (let y = 0; y < height; y += 50) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(width,y); ctx.stroke(); }
+    }
+
     function animate() {
         ctx.drawImage(canvas, -speed, 0);
         ctx.clearRect(width - speed, 0, speed, height);
         for (let i = 0; i < speed; i++) {
             const x = width - speed + i;
-            const y = currentRhythm((offset + x) % width);
-            ctx.strokeStyle = '#00ff7f'; ctx.lineWidth = 2;
+            const y = currentRhythm ? currentRhythm(offset + x) : height / 2;
+            ctx.strokeStyle = lineColor; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y); ctx.stroke();
         }
         offset += speed;
@@ -58,11 +115,139 @@
     }
     animate();
 
+    // 5 Variations Per Rhythm (Real Medical Parameters)
+    const rhythms = {
+        all: [],
+        nsr: [
+            {name: 'NSR 60bpm', rate: 60, pr: 160, qrs: 80},
+            {name: 'NSR 70bpm', rate: 70, pr: 150, qrs: 90},
+            {name: 'NSR 80bpm', rate: 80, pr: 140, qrs: 85},
+            {name: 'NSR 90bpm', rate: 90, pr: 130, qrs: 95},
+            {name: 'NSR 100bpm', rate: 100, pr: 120, qrs: 100}
+        ],
+        tach: [
+            {name: 'Sinus Tach 110bpm', rate: 110, pr: 140, qrs: 90},
+            {name: 'Sinus Tach 130bpm', rate: 130, pr: 130, qrs: 95},
+            {name: 'Sinus Tach 150bpm', rate: 150, pr: 120, qrs: 100},
+            {name: 'Sinus Tach 170bpm', rate: 170, pr: 110, qrs: 105},
+            {name: 'Sinus Tach 180bpm', rate: 180, pr: 100, qrs: 110}
+        ],
+        brad: [
+            {name: 'Sinus Brad 50bpm', rate: 50, pr: 180, qrs: 90},
+            {name: 'Sinus Brad 45bpm', rate: 45, pr: 190, qrs: 95},
+            {name: 'Sinus Brad 40bpm', rate: 40, pr: 200, qrs: 100},
+            {name: 'Sinus Brad 35bpm', rate: 35, pr: 210, qrs: 105},
+            {name: 'Sinus Brad 30bpm', rate: 30, pr: 220, qrs: 110}
+        ],
+        vfib: [
+            {name: 'Coarse V-Fib', rate: 400, amp: 40},
+            {name: 'Fine V-Fib', rate: 500, amp: 20},
+            {name: 'Medium V-Fib', rate: 450, amp: 30},
+            {name: 'High Freq V-Fib', rate: 550, amp: 25},
+            {name: 'Low Amp V-Fib', rate: 350, amp: 15}
+        ],
+        vtach: [
+            {name: 'VTach 150bpm', rate: 150, qrs: 160},
+            {name: 'VTach 170bpm', rate: 170, qrs: 170},
+            {name: 'VTach 190bpm', rate: 190, qrs: 180},
+            {name: 'VTach 210bpm', rate: 210, qrs: 190},
+            {name: 'VTach 230bpm', rate: 230, qrs: 200}
+        ],
+        block1: [
+            {name: '1° Block PR 220ms', rate: 70, pr: 220, qrs: 90},
+            {name: '1° Block PR 240ms', rate: 65, pr: 240, qrs: 95},
+            {name: '1° Block PR 260ms', rate: 60, pr: 260, qrs: 100},
+            {name: '1° Block PR 280ms', rate: 55, pr: 280, qrs: 105},
+            {name: '1° Block PR 300ms', rate: 50, pr: 300, qrs: 110}
+        ],
+        pac: [
+            {name: 'PAC every 4 beats', base: 70, freq: 4},
+            {name: 'PAC every 5 beats', base: 75, freq: 5},
+            {name: 'PAC every 3 beats', base: 80, freq: 3},
+            {name: 'PAC every 6 beats', base: 65, freq: 6},
+            {name: 'PAC every 7 beats', base: 85, freq: 7}
+        ],
+        pvc: [
+            {name: 'PVC every 4 beats', base: 70, freq: 4, qrs: 160},
+            {name: 'PVC every 5 beats', base: 75, freq: 5, qrs: 170},
+            {name: 'PVC every 3 beats', base: 80, freq: 3, qrs: 180},
+            {name: 'PVC every 6 beats', base: 65, freq: 6, qrs: 190},
+            {name: 'PVC every 7 beats', base: 85, freq: 7, qrs: 200}
+        ],
+        asystole: [
+            {name: 'Asystole', noise: 0},
+            {name: 'Asystole with drift', noise: 2},
+            {name: 'Asystole with artifact', noise: 5},
+            {name: 'Asystole fine line', noise: 1},
+            {name: 'Asystole coarse', noise: 3}
+        ]
+    };
+
+    rhythms.all = Object.values(rhythms).flat().filter(r => r.name);
+
+    function makeRhythm(p, type) {
+        return x => {
+            let y = height / 2;
+            if (type === 'vfib') {
+                y += (Math.random()-0.5)*p.amp*Math.sin(x*0.1);
+            } else if (type === 'asystole') {
+                y += (Math.random()-0.5)*p.noise;
+            } else if (type === 'pac' || type === 'pvc') {
+                const beat = width * 60 / p.base / 10;
+                const beatNum = Math.floor(x / beat);
+                const t = x % beat;
+                const isPrem = beatNum % p.freq === 0;
+                const localT = isPrem ? t * 0.7 : t;
+                y += Math.sin(localT * 0.3) * 10;
+                const qrsW = type === 'pvc' ? p.qrs : 90;
+                const prT = localT - 150;
+                if (prT > 0 && prT < qrsW) y -= 40;
+                if (prT > qrsW) y += Math.sin((prT - qrsW) * 0.2) * 15;
+            } else {
+                const beat = width * 60 / p.rate / 10;
+                const t = x % beat;
+                const prT = t - p.pr;
+                y += Math.sin(t * 0.3) * 10;
+                if (prT > 0 && prT < p.qrs) y -= 40;
+                if (prT > p.qrs) y += Math.sin((prT - p.qrs) * 0.2) * 15;
+            }
+            return y;
+        };
+    }
+
+    let category = 'all', totalQ = 15, q = 0, score = 0, selected = -1, quiz = [], correctIdx = 0;
+
+    document.querySelectorAll('.category-btn').forEach(b => b.addEventListener('click', () => {
+        document.querySelectorAll('.category-btn').forEach(bb => bb.classList.remove('active'));
+        b.classList.add('active');
+        category = b.dataset.type;
+    }));
+
     document.getElementById('start-btn').onclick = () => {
-        currentRhythm = x => height / 2 + Math.sin(x * 0.15) * 30;
+        totalQ = +document.getElementById('question-count').value;
+        const pool = rhythms[category] || rhythms.all;
+        quiz = Array(totalQ).fill().map(() => pool[Math.floor(Math.random() * pool.length)]);
+        q = 0; score = 0;
         document.getElementById('quiz-container').classList.remove('hidden');
         document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('quiz-settings').style.display = 'none';
+        loadQ();
     };
-</script>
-</body>
-</html>
+
+    function loadQ() {
+        const r = quiz[q];
+        currentRhythm = makeRhythm(r, category);
+        document.getElementById('question').textContent = `Q${q+1}/${totalQ}: Identify the rhythm.`;
+        const opts = [r.name, ...getDistractors(r.name, category)];
+        opts.sort(() => Math.random() - 0.5);
+        correctIdx = opts.indexOf(r.name);
+        const ul = document.getElementById('options'); ul.innerHTML = '';
+        opts.forEach((o, i) => {
+            const li = document.createElement('li');
+            li.textContent = o;
+            li.onclick = () => select(i);
+            ul.appendChild(li);
+        });
+        document.getElementById('feedback').innerHTML = '';
+        document.getElementById('submit-btn').classList.remove('hidden');
+        document.getElementById('next-btn').classList.add
