@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Live ECG Rhythm Quiz</title>
+<style>
+    body {font-family: 'Courier New', monospace; background:#0a0a0a; color:#00ff00; margin:0; padding:20px; text-align:center;}
+    #monitor {width:100%; max-width:800px; height:180px; background:#000; border:2px solid #00ff00; margin:0 auto 20px; position:relative; overflow:hidden;}
+    canvas {display:block; width:100%; height:100%;}
+    #quiz {max-width:600px; margin:auto;}
+    #question {font-size:18px; margin-bottom:15px;}
+    #options {list-style:none; padding:0;}
+    #options li {margin:8px 0; padding:10px; background:#1a1a1a; border:1px solid #00ff00; cursor:pointer;}
+    #options li:hover {background:#00ff00; color:#000;}
+    #options li.selected {background:#00ff00; color:#000;}
+    #feedback {margin-top:15px; min-height:40px;}
+    #score {display:none; font-size:24px; margin-top:20px;}
+    button {background:#00ff00; color:#000; border:none; padding:10px 20px; margin:5px; cursor:pointer; font-size:16px;}
+    button:hover {background:#00cc00;}
+</style>
+</head>
+<body>
+<div id="monitor"><canvas id="ecg"></canvas></div>
+<div id="quiz">
+    <h1>Live ECG Rhythm Quiz</h1>
+    <p>Watch the monitor, then pick the rhythm.</p>
+    <div id="question"></div>
+    <ul id="options"></ul>
+    <button id="submit">Submit</button>
+    <button id="next" style="display:none;">Next →</button>
+    <div id="feedback"></div>
+    <div id="score"></div>
+</div>
+
+<script>
+/* -------------------------------------------------
+   1. Rhythm drawing functions
+   ------------------------------------------------- */
+const rhythms = {
+    sinusTach: (ctx, w, h, x) => {
+        const mid = h/2;
+        const rate = 110;                 // bpm
+        const pxPerBeat = w*60/rate;      // pixels per beat at 25 mm/s (≈1 px = 0.04 s)
+        const t = (x % pxPerBeat)/pxPerBeat * 2*Math.PI;
+        const p = mid + Math.sin(t)*8;               // P wave
+        const qrs = mid + (Math.abs(Math.sin(t*3))<0.1 ? -30 : 0);
+        const tWave = mid + Math.sin(t-0.8)*12;
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(x, p-1, 1, 2);
+        ctx.fillRect(x, qrs-3, 1, 6);
+        ctx.fillRect(x, tWave-1, 1, 2);
+    },
+
+    aFib: (ctx, w, h, x) => {
+        const mid = h/2;
+        const fibril = mid + (Math.random()-0.5)*20;
+        const qrs = Math.random()<0.15 ? mid-25 : mid+30;
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(x, fibril-1, 1, 2);
+        if (qrs!==mid+30) ctx.fillRect(x, qrs-3, 1, 6);
+    },
+
+    vTach: (ctx, w, h, x) => {
+        const mid = h/2;
+        const rate = 180;
+        const pxPerBeat = w*60/rate;
+        const t = (x % pxPerBeat)/pxPerBeat * 2*Math.PI;
+        const wideQRS = mid + (Math.abs(Math.sin(t*2))<0.2 ? -35 : 0);
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(x, wideQRS-5, 1, 10);
+    },
+
+    vFib: (ctx, w, h, x) => {
+        const mid = h/2;
+        const noise = mid + (Math.random()-0.5)*45;
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(x, noise-1, 1, 2);
+    },
+
+    asystole: (ctx, w, h, x) => {
+        const mid = h/2;
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(x, mid-1, 1, 2);   // flat line
+    },
+
+    sinusBrad: (ctx, w, h, x) => {
+        const mid = h/2;
+        const rate = 45;
+        const pxPerBeat = w*60/rate;
+        const t = (x % pxPerBeat)/pxPerBeat * 2*Math.PI;
+        const p = mid + Math.sin(t)*8;
+        const qrs = mid + (Math.abs(Math.sin(t*3))<0.1 ? -30 : 0);
+        const tWave = mid + Math.sin(t-0.8)*12;
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(x, p-1, 1, 2);
+        ctx.fillRect(x, qrs-3, 1, 6);
+        ctx.fillRect(x, tWave-1, 1, 2);
+    },
+
+    aFlutter: (ctx, w, h, x) => {
+        const mid = h/2;
+        const rate = 300;               // atrial rate
+        const pxPerFlutter = w*60/rate;
+        const t = (x % pxPerFlutter)/pxPerFlutter * 2*Math.PI;
+        const flutter = mid + Math.sin(t*4)*12; // saw-tooth
+        const qrs = (x % (w*60/150) < 2) ? mid-25 : mid+30;
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(x, flutter-1, 1, 2);
+        if (qrs!==mid+30) ctx.fillRect(x, qrs-3, 1, 6);
+    },
+
+    firstDegree: (ctx, w, h, x) => {
+        const mid = h/2;
+        const rate = 75;
+        const pxPerBeat = w*60/rate;
+        const t = (x % pxPerBeat)/pxPerBeat * 2*Math.PI;
+        const pr = 0.28;               // prolonged PR ≈ 7 px at 25 mm/s
+        const pStart = (x % pxPerBeat) - pr*w/1.5;
+        const p = pStart>0 ? mid + Math.sin(t)*8 : mid;
+        const qrs = mid + (Math.abs(Math.sin(t*3))<0.1 ? -30 : 0);
+        ctx.fillStyle = '#00ff00';
+        if (pStart>0) ctx.fillRect(x, p-1, 1, 2);
+        ctx.fillRect(x, qrs-3, 1, 6);
+    },
+
+    junctional: (ctx, w, h, x) => {
+        const mid = h/2;
+        const rate = 70;
+        const pxPerBeat = w*60/rate;
+        const t = (x % pxPerBeat)/pxPerBeat * 2*Math.PI;
+        const qrs = mid + (Math.abs(Math.sin(t*3))<0.1 ? -30 : 0);
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(x, qrs-3, 1, 6);
+    },
+
+    thirdDegree: (ctx, w, h, x) => {
+        const mid = h/2;
+        const pRate = 90, qrsRate = 40;
+        const pBeat = w*60/pRate, qBeat = w*60/qrsRate;
+        const p = (x % pBeat < 2) ? mid + 8 : mid;
+        const q = (x % qBeat < 3) ? mid-30 : mid+30;
+        ctx.fillStyle = '#00ff00';
+        if (p!==mid) ctx.fillRect(x, p-1, 1, 2);
+        if (q!==mid+30) ctx.fillRect(x, q-3, 1, 6);
+    }
+};
+
+/* -------------------------------------------------
+   2. Scrolling ECG engine
+   ------------------------------------------------- */
+const canvas = document.getElementById('ecg');
+const ctx = canvas.getContext('2d');
+let width, height;
+function resize() {
+    width = canvas.clientWidth; height = canvas.clientHeight;
+    canvas.width = width; canvas.height = height;
+}
+resize(); window.addEventListener('resize', resize);
+
+let offset = 0;
+let currentRhythm = rhythms.sinusTach;   // default
+
+function drawECG() {
+    // 1. shift everything left by 1 px
+    ctx.drawImage(canvas, -1, 0);
+    // 2. clear rightmost column
+    ctx.clearRect(width-1, 0, 1, height);
+    // 3. draw new column
+    currentRhythm(ctx, width, height, offset % width);
+    offset++;
+    requestAnimationFrame(drawECG);
+}
+drawECG();
+
+/* -------------------------------------------------
+   3. Quiz data
+   ------------------------------------------------- */
+const questions = [
+    {q:"Rate 110 bpm, regular, normal P-QRS-T", rhythm:rhythms.sinusTach, opts:["Sinus Tachycardia","Atrial Fibrillation","Ventricular Tachycardia","Sinus Bradycardia"], ans:0, exp:"Sinus Tachycardia – normal conduction, rate >100 bpm."},
+    {q:"Irregularly irregular, no distinct P waves", rhythm:rhythms.aFib, opts:["Atrial Fibrillation","SVT","Ventricular Fibrillation","1° AV Block"], ans:0, exp:"Atrial Fibrillation – chaotic atrial activity, irregular ventricular response."},
+    {q:"Wide QRS, regular, rate ~180 bpm", rhythm:rhythms.vTach, opts:["Ventricular Tachycardia","Sinus Rhythm","Asystole","Atrial Flutter"], ans:0, exp:"Ventricular Tachycardia – life-threatening; synchronized cardioversion if unstable."},
+    {q:"Chaotic wavy baseline, no QRS", rhythm:rhythms.vFib, opts:["Ventricular Fibrillation","3° AV Block","Junctional","NSR"], ans:0, exp:"Ventricular Fibrillation – shockable rhythm; defibrillate immediately."},
+    {q:"Flat line", rhythm:rhythms.asystole, opts:["Asystole","PEA","2° AV Block","Atrial Tachycardia"], ans:0, exp:"Asystole – non-shockable; high-quality CPR + epinephrine."},
+    {q:"Rate 45 bpm, regular, normal P-QRS-T", rhythm:rhythms.sinusBrad, opts:["Sinus Bradycardia","VF","Atrial Flutter","Complete Heart Block"], ans:0, exp:"Sinus Bradycardia – rate <60 bpm; atropine if symptomatic."},
+    {q:"Saw-tooth flutter waves, ventricular rate ~150 bpm", rhythm:rhythms.aFlutter, opts:["Atrial Flutter","MAT","SVT","Idioventricular"], ans:0, exp:"Atrial Flutter – often 2:1 block; synchronized cardioversion if unstable."},
+    {q:"PR interval >0.20 s, regular QRS", rhythm:rhythms.firstDegree, opts:["First-Degree AV Block","VT","Asystole","A-Fib"], ans:0, exp:"First-Degree AV Block – benign; monitor for progression."},
+    {q:"Narrow QRS, no P waves, rate 70 bpm", rhythm:rhythms.junctional, opts:["Junctional Rhythm","Sinus Tach","VF","3° Block"], ans:0, exp:"Junctional Rhythm – AV node origin; stable unless extremes."},
+    {q:"P waves unrelated to QRS, ventricular rate 40 bpm", rhythm:rhythms.thirdDegree, opts:["Third-Degree AV Block","A-Fib","NSR","VT"], ans:0, exp:"Third-Degree AV Block – emergency; transcutaneous pacing."}
+];
+
+/* -------------------------------------------------
+   4. Quiz logic
+   ------------------------------------------------- */
+let qIdx = 0, score = 0, chosen = -1;
+
+function load() {
+    const q = questions[qIdx];
+    currentRhythm = q.rhythm;               // <<< switch live ECG
+    document.getElementById('question').textContent = q.q;
+    const ul = document.getElementById('options');
+    ul.innerHTML = '';
+    q.opts.forEach((txt,i)=>{
+        const li = document.createElement('li');
+        li.textContent = txt;
+        li.onclick = ()=>select(i);
+        ul.appendChild(li);
+    });
+    document.getElementById('feedback').innerHTML = '';
+    document.getElementById('submit').style.display = 'inline';
+    document.getElementById('next').style.display = 'none';
+    chosen = -1;
+}
+function select(i){
+    document.querySelectorAll('#options li').forEach((li,j)=>li.classList.toggle('selected',j===i));
+    chosen = i;
+}
+document.getElementById('submit').onclick = ()=>{
+    if(chosen===-1) return alert('Pick an answer!');
+    const q = questions[qIdx];
+    const fb = document.getElementById('feedback');
+    if(chosen===q.ans){
+        score++;
+        fb.innerHTML = `<span style="color:#0f0;">Correct!</span> ${q.exp}`;
+    }else{
+        fb.innerHTML = `<span style="color:#f00;">Wrong.</span> Answer: ${q.opts[q.ans]}<br>${q.exp}`;
+    }
+    document.getElementById('submit').style.display='none';
+    document.getElementById('next').style.display='inline';
+};
+document.getElementById('next').onclick = ()=>{
+    qIdx++;
+    if(qIdx<questions.length) load();
+    else showScore();
+};
+function showScore(){
+    document.getElementById('quiz').innerHTML = `
+        <h1>Quiz Complete!</h1>
+        <div id="score">Score: ${score}/${questions.length} (${Math.round(score/questions.length*100)}%)</div>
+        <button onclick="location.reload()">Restart</button>
+    `;
+}
+load();
+</script>
+</body>
+</html>
