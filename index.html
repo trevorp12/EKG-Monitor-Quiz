@@ -76,7 +76,7 @@
     let offset = 0;
     let currentRhythm = null;
 
-    // Default rhythm on load (simple sine wave to test)
+    // Default rhythm on load
     currentRhythm = x => height / 2 + Math.sin(x * 0.05) * 20;
 
     function resize() {
@@ -84,7 +84,7 @@
         height = canvas.clientHeight;
         canvas.width = width;
         canvas.height = height;
-        drawGridOnce();
+        drawGrid();
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -92,7 +92,8 @@
         window.addEventListener('resize', resize);
     });
 
-    function drawGridOnce() {
+    function drawGrid() {
+        ctx.clearRect(0, 0, width, height);
         ctx.strokeStyle = '#333'; ctx.lineWidth = 0.5;
         for (let x = 0; x < width; x += 10) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,height); ctx.stroke(); }
         for (let y = 0; y < height; y += 10) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(width,y); ctx.stroke(); }
@@ -107,7 +108,7 @@
 
         for (let i = 0; i < speed; i++) {
             const x = width - speed + i;
-            const y = currentRhythm ? currentRhythm(offset + x) : height / 2;
+            const y = currentRhythm(offset + x);
             ctx.strokeStyle = lineColor; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y); ctx.stroke();
         }
@@ -211,6 +212,5 @@
         }
     };
 </script>
-</body>
 </body>
 </html>
