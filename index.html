@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECG Rhythm Quiz</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        #header { max-width: 800px; width: 100%; text-align: center; margin-bottom: 20px; }
+        #category-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 15px; }
+        .category-btn { background: #1f1f1f; color: #fff; border: 1px solid #444; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: 0.2s; }
+        .category-btn:hover, .category-btn.active { background: #00aaff; color: #000; }
+        #quiz-settings { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; margin-bottom: 15px; }
+        #quiz-settings select, #start-btn { padding: 8px 12px; border-radius: 6px; border: 1px solid #444; background: #1f1f1f; color: #e0e0e0; font-size: 14px; }
+        #start-btn { background: #00ff88; color: #000; font-weight: bold; cursor: pointer; }
+        #start-btn:hover { background: #00cc70; }
+        #monitor { width: 100%; max-width: 800px; height: 200px; background: #1a1a1a; border: 2px solid #333; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.6); }
+        #ecg-image { width: 100%; height: 100%; object-fit: contain; }
+        #quiz-container { max-width: 600px; background: #1f1f1f; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.6); text-align: center; }
+        #question { font-size: 20px; font-weight: bold; margin-bottom: 15px; }
+        #options { list-style: none; margin: 0; padding: 0; }
+        #options li { margin: 10px 0; padding: 12px; background: #2a2a2a; border: 1px solid #444; border-radius: 6px; cursor: pointer; }
+        #options li:hover { background: #3a3a3a; }
+        #options li.selected { background: #00ff88; color: #000; font-weight: bold; }
+        #feedback { margin-top: 20px; padding: 10px; background: #2a2a2a; border-radius: 6px; min-height: 50px; }
+        #score { font-size: 28px; font-weight: bold; margin: 20px 0; display: none; }
+        button { background: #00ff88; color: #000; border: none; padding: 10px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold; margin: 10px 5px; }
+        button:hover { background: #00cc70; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <h1>ECG Rhythm Quiz</h1>
+    <div id="category-bar">
+        <button class="category-btn active" data-type="all">All Rhythms</button>
+        <button class="category-btn" data-type="nsr">NSR</button>
+        <button class="category-btn" data-type="sinus_tach">Sinus Tachycardia</button>
+        <button class="category-btn" data-type="sinus_brad">Sinus Bradycardia</button>
+        <button class="category-btn" data-type="vfib">V-Fib</button>
+        <button class="category-btn" data-type="vtach">V-Tach</button>
+        <button class="category-btn" data-type="block1">1° Block</button>
+        <button class="category-btn" data-type="pac">PAC</button>
+        <button class="category-btn" data-type="pvc">PVC</button>
+        <button class="category-btn" data-type="asystole">Asystole</button>
+    </div>
+    <div id="quiz-settings">
+        <select id="question-count">
+            <option value="10">10 Questions</option>
+            <option value="15" selected>15 Questions</option>
+            <option value="20">20 Questions</option>
+            <option value="25">25 Questions</option>
+        </select>
+        <button id="start-btn">Start Quiz</button>
+    </div>
+</div>
+
+<div id="monitor">
+    <img id="ecg-image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==" alt="ECG Strip" style="width: 100%; height: 100%; object-fit: contain;">
+</div>
+
+<div id="quiz-container" class="hidden">
+    <div id="question"></div>
+    <ul id="options"></ul>
+    <button id="submit-btn">Submit Answer</button>
+    <button id="next-btn" class="hidden">Next Question</button>
+    <div id="feedback"></div>
+    <div id="score"></div>
+</div>
+
+<script>
+    // 5 Variations Per Rhythm (5 Images Each)
+    const ecgImages = {
+        // NSR (60-100 bpm, PR 120-200ms, QRS 60-100ms)
+        'NSR 60bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'NSR 70bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'NSR 80bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'NSR 90bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'NSR 100bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        // Sinus Tachycardia (100-180 bpm, PR 120-200ms, QRS 60-100ms)
+        'Sinus Tach 110bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Sinus Tach 130bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Sinus Tach 150bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Sinus Tach 170bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Sinus Tach 180bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        // Sinus Bradycardia (40-60 bpm, PR 120-200ms, QRS 60-100ms)
+        'Sinus Brad 40bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Sinus Brad 45bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Sinus Brad 50bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Sinus Brad 55bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Sinus Brad 60bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        // V-Fib (300-600/min, chaotic, no QRS)
+        'V-Fib Coarse': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'V-Fib Fine': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'V-Fib Medium': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'V-Fib High Freq': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'V-Fib Low Amp': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        // V-Tach (100-250 bpm, wide QRS >120ms)
+        'V-Tach 100bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'V-Tach 140bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'V-Tach 180bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'V-Tach 220bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'V-Tach 250bpm': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        // 1° Block (PR >200ms, normal rate)
+        '1° Block PR 220ms': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        '1° Block PR 240ms': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        '1° Block PR 260ms': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        '1° Block PR 280ms': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        '1° Block PR 300ms': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        // PAC (NSR base, premature P, normal QRS)
+        'PAC every 3': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'PAC every 4': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'PAC every 5': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'PAC every 6': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'PAC every 7': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        // PVC (NSR base, premature wide QRS)
+        'PVC every 3': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'PVC every 4': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'PVC every 5': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'PVC every 6': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'PVC every 7': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        // Asystole (flat line, 5 noise variations)
+        'Asystole Flat': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Asystole Drift': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Asystole Artifact': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Asystole Fine': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."',
+        'Asystole Coarse': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAABChm..."'
+    };
+
+    // 5 Variations Per Rhythm
+    const rhythms = {
+        all: [],
+        nsr: [
+            {name: 'NSR 60bpm', image: 'NSR 60bpm', params: 'Rate 60 bpm, PR 120ms, QRS 80ms'},
+            {name: 'NSR 70bpm', image: 'NSR 70bpm', params: 'Rate 70 bpm, PR 140ms, QRS 85ms'},
+            {name: 'NSR 80bpm', image: 'NSR 80bpm', params: 'Rate 80 bpm, PR 160ms, QRS 90ms'},
+            {name: 'NSR 90bpm', image: 'NSR 90bpm', params: 'Rate 90 bpm, PR 180ms, QRS 95ms'},
+            {name: 'NSR 100bpm', image: 'NSR 100bpm', params: 'Rate 100 bpm, PR 200ms, QRS 100ms'}
+        ],
+        sinus_tach: [
+            {name: 'Sinus Tach 110bpm', image: 'Sinus Tach 110bpm', params: 'Rate 110 bpm, PR 140ms, QRS 90ms'},
+            {name: 'Sinus Tach 130bpm', image: 'Sinus Tach 130bpm', params: 'Rate 130 bpm, PR 150ms, QRS 95ms'},
+            {name: 'Sinus Tach 150bpm', image: 'Sinus Tach 150bpm', params: 'Rate 150 bpm, PR 160ms, QRS 100ms'},
+            {name: 'Sinus Tach 170bpm', image: 'Sinus Tach 170bpm', params: 'Rate 170 bpm, PR 170ms, QRS 105ms'},
+            {name: 'Sinus Tach 180bpm', image: 'Sinus Tach 180bpm', params: 'Rate 180 bpm, PR 180ms, QRS 110ms'}
+        ],
+        sinus_brad: [
+            {name: 'Sinus Brad 40bpm', image: 'Sinus Brad 40bpm', params: 'Rate 40 bpm, PR 200ms, QRS 100ms'},
+            {name: 'Sinus Brad 45bpm', image: 'Sinus Brad 45bpm', params: 'Rate 45 bpm, PR 210ms, QRS 105ms'},
+            {name: 'Sinus Brad 50bpm', image: 'Sinus Brad 50bpm', params: 'Rate 50 bpm, PR 220ms, QRS 110ms'},
+            {name: 'Sinus Brad 55bpm', image: 'Sinus Brad 55bpm', params: 'Rate 55 bpm, PR 230ms, QRS 115ms'},
+            {name: 'Sinus Brad 60bpm', image: 'Sinus Brad 60bpm', params: 'Rate 60 bpm, PR 240ms, QRS 120ms'}
+        ],
+        vfib: [
+            {name: 'V-Fib Coarse', image: 'V-Fib Coarse', params: 'Chaotic, 300-600/min, coarse amplitude'},
+            {name: 'V-Fib Fine', image: 'V-Fib Fine', params: 'Chaotic, 300-600/min, fine amplitude'},
+            {name: 'V-Fib Medium', image: 'V-Fib Medium', params: 'Chaotic, 300-600/min, medium amplitude'},
+            {name: 'V-Fib High Freq', image: 'V-Fib High Freq', params: 'Chaotic, >500/min, high frequency'},
+            {name: 'V-Fib Low Amp', image: 'V-Fib Low Amp', params: 'Chaotic, 300-400/min, low amplitude'}
+        ],
+        vtach: [
+            {name: 'V-Tach 100bpm', image: 'V-Tach 100bpm', params: 'Rate 100 bpm, QRS >120ms, monomorphic'},
+            {name: 'V-Tach 140bpm', image: 'V-Tach 140bpm', params: 'Rate 140 bpm, QRS >120ms, monomorphic'},
+            {name: 'V-Tach 180bpm', image: 'V-Tach 180bpm', params: 'Rate 180 bpm, QRS >120ms, monomorphic'},
+            {name: 'V-Tach 220bpm', image: 'V-Tach 220bpm', params: 'Rate 220 bpm, QRS >120ms, monomorphic'},
+            {name: 'V-Tach 250bpm', image: 'V-Tach 250bpm', params: 'Rate 250 bpm, QRS >120ms, monomorphic'}
+        ],
+        block1: [
+            {name: '1° Block PR 220ms', image: '1° Block PR 220ms', params: 'PR 220ms, rate 70 bpm, normal QRS'},
+            {name: '1° Block PR 240ms', image: '1° Block PR 240ms', params: 'PR 240ms, rate 65 bpm, normal QRS'},
+            {name: '1° Block PR 260ms', image: '1° Block PR 260ms', params: 'PR 260ms, rate 60 bpm, normal QRS'},
+            {name: '1° Block PR 280ms', image: '1° Block PR 280ms', params: 'PR 280ms, rate 55 bpm, normal QRS'},
+            {name: '1° Block PR 300ms', image: '1° Block PR 300ms', params: 'PR 300ms, rate 50 bpm, normal QRS'}
+        ],
+        pac: [
+            {name: 'PAC every 3 (NSR base)', image: 'PAC every 3', params: 'NSR 70 bpm, PAC every 3rd beat, short PR'},
+            {name: 'PAC every 4 (NSR base)', image: 'PAC every 4', params: 'NSR 70 bpm, PAC every 4th beat, short PR'},
+            {name: 'PAC every 5 (NSR base)', image: 'PAC every 5', params: 'NSR 70 bpm, PAC every 5th beat, short PR'},
+            {name: 'PAC every 6 (NSR base)', image: 'PAC every 6', params: 'NSR 70 bpm, PAC every 6th beat, short PR'},
+            {name: 'PAC every 7 (NSR base)', image: 'PAC every 7', params: 'NSR 70 bpm, PAC every 7th beat, short PR'}
+        ],
+        pvc: [
+            {name: 'PVC every 3 (NSR base)', image: 'PVC every 3', params: 'NSR 70 bpm, PVC every 3rd beat, wide QRS'},
+            {name: 'PVC every 4 (NSR base)', image: 'PVC every 4', params: 'NSR 70 bpm, PVC every 4th beat, wide QRS'},
+            {name: 'PVC every 5 (NSR base)', image: 'PVC every 5', params: 'NSR 70 bpm, PVC every 5th beat, wide QRS'},
+            {name: 'PVC every 6 (NSR base)', image: 'PVC every 6', params: 'NSR 70 bpm, PVC every 6th beat, wide QRS'},
+            {name: 'PVC every 7 (NSR base)', image: 'PVC every 7', params: 'NSR 70 bpm, PVC every 7th beat, wide QRS'}
+        ],
+        asystole: [
+            {name: 'Asystole Flat', image: 'Asystole Flat', params: 'Flat line, no electrical activity'},
+            {name: 'Asystole Drift', image: 'Asystole Drift', params: 'Flat line with baseline drift'},
+            {name: 'Asystole Artifact', image: 'Asystole Artifact', params: 'Flat line with artifact'},
+            {name: 'Asystole Fine', image: 'Asystole Fine', params: 'Flat line with fine noise'},
+            {name: 'Asystole Coarse', image: 'Asystole Coarse', params: 'Flat line with coarse noise'}
+        ]
+    };
+
+    // Flatten for 'all'
+    rhythms.all = Object.values(rhythms).flat();
+
+    let currentCategory = 'all';
+    let totalQuestions = 15;
+    let currentQuestion = 0;
+    let score = 0;
+    let selectedOption = -1;
+    let quizQuestions = [];
+    let currentCorrectIndex = 0;
+
+    // Category selection
+    document.querySelectorAll('.category-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+            button.classList.add('active');
+            currentCategory = button.dataset.type;
+        });
+    });
+
+    // Start Quiz
+    document.getElementById('start-btn').addEventListener('click', () => {
+        totalQuestions = parseInt(document.getElementById('question-count').value);
+        const pool = rhythms[currentCategory] || rhythms.all;
+        quizQuestions = [];
+        for (let i = 0; i < totalQuestions; i++) {
+            const rhythm = pool[Math.floor(Math.random() * pool.length)];
+            quizQuestions.push(rhythm);
+        }
+        currentQuestion = 0;
+        score = 0;
+        document.getElementById('quiz-container').classList.remove('hidden');
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('quiz-settings').style.display = 'none';
+        loadQuestion();
+    });
+
+    // Load Question
+    function loadQuestion() {
+        const rhythm = quizQuestions[currentQuestion];
+        document.getElementById('ecg-image').src = ecgImages[rhythm.image];
+        document.getElementById('question').innerHTML = `<strong>Question ${currentQuestion + 1} of ${totalQuestions}</strong><br><small>${rhythm.params}</small>`;
+        const options = [rhythm.name];
+        const distractors = getDistractors(rhythm.name);
+        options.push(...distractors);
+        options.sort(() => Math.random() - 0.5);
+        currentCorrectIndex = options.indexOf(rhythm.name);
+        const ul = document.getElementById('options');
+        ul.innerHTML = '';
+        options.forEach((option, index) => {
+            const li = document.createElement('li');
+            li.textContent = option;
+            li.onclick = () => selectOption(index);
+            ul.appendChild(li);
+        });
+        document.getElementById('feedback').innerHTML = '';
+        document.getElementById('submit-btn').style.display = 'inline-block';
+        document.getElementById('next-btn').style.display = 'none';
+        selectedOption = -1;
+    }
+
+    function getDistractors(correctName) {
+        const allRhythms = Object.values(rhythms).flat();
+        const distractors = [];
+        while (distractors.length < 3) {
+            const randomRhythm = allRhythms[Math.floor(Math.random() * allRhythms.length)];
+            if (randomRhythm.name !== correctName && !distractors.includes(randomRhythm.name)) {
+                distractors.push(randomRhythm.name);
+            }
+        }
+        return distractors;
+    }
+
+    function selectOption(index) {
+        document.querySelectorAll('#options li').forEach((li, i) => {
+            li.classList.toggle('selected', i === index);
+        });
+        selectedOption = index;
+    }
+
+    document.getElementById('submit-btn').onclick = () => {
+        if (selectedOption === -1) {
+            alert('Please select an answer!');
+            return;
+        }
+        const feedback = document.getElementById('feedback');
+        if (selectedOption === currentCorrectIndex) {
+            score++;
+            feedback.innerHTML = '<span style="color: #00ff88;">Correct!</span> ' + quizQuestions[currentQuestion].params;
+        } else {
+            feedback.innerHTML = '<span style="color: #ff4444;">Incorrect.</span> The correct answer is: ' + quizQuestions[currentQuestion].name + '<br>' + quizQuestions[currentQuestion].params;
+        }
+        document.getElementById('submit-btn').style.display = 'none';
+        document.getElementById('next-btn').style.display = 'inline-block';
+    };
+
+    document.getElementById('next-btn').onclick = () => {
+        currentQuestion++;
+        if (currentQuestion < totalQuestions) {
+            loadQuestion();
+        } else {
+            document.getElementById('quiz-container').innerHTML = `
+                <h1>Quiz Complete!</h1>
+                <div id="score">Score: ${score} / ${totalQuestions} (${Math.round(score / totalQuestions * 100)}%)</div>
+                <button onclick="location.reload()">Restart Quiz</button>
+            `;
+        }
+    };
+</script>
+</body>
+</html>
